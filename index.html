@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대한민국 여행 기록 서비스</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+        }
+        body {
+            font-family: 'Malgun Gothic', dotum, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        header {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            gap: 40px;
+            max-width: 1200px;
+            width: 100%;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        /* 지도 영역 */
+        .map-container {
+            flex: 1.2;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .map-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .back-btn {
+            padding: 6px 14px;
+            background-color: #666;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .back-btn:hover { background-color: #444; }
+        
+        /* SVG와 업로드한 실제 이미지를 한 몸으로 겹쳐 정렬 */
+        .map-stage {
+            position: relative;
+            width: 550px;
+            height: 650px;
+        }
+        .bg-map-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            pointer-events: none; /* 클릭 이벤트가 SVG 패스에 전달되도록 설정 */
+            z-index: 1;
+        }
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+        
+        /* 투명 구획 및 사진 마스킹 제어 스타일 */
+        .region {
+            fill: rgba(255, 255, 255, 0.01); /* 기본적으로 투명하게 하여 배경 이미지 노출 */
+            stroke: rgba(0, 0, 0, 0.1);
+            stroke-width: 1;
+            cursor: pointer;
+            transition: fill 0.2s;
+        }
+        .region:hover {
+            fill: rgba(74, 144, 226, 0.2) !important; /* 마우스 올렸을 때 하이라이트 */
+            stroke: var(--primary-color);
+            stroke-width: 2;
+        }
+        .region.active {
+            stroke: var(--primary-color);
+            stroke-width: 3;
+            fill: rgba(74, 144, 226, 0.1);
+        }
+
+        /* 툴팁 */
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* 우측 사이드바 */
+        .sidebar {
+            width: 380px;
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 20px;
+        }
+        .hidden { display: none !important; }
+        h2 { margin-top: 0; color: #333; border-bottom: 2px solid var(--primary-color); padding-bottom: 8px;}
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 14px; color: #555; }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            resize: none;
+            font-family: inherit;
+        }
+        button.save-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button.save-btn:hover { background-color: #357abd; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🗺️ 대한민국 여행 기록 서비스</h1>
+    <p>첨부해주신 백지도 이미지들을 기반으로 구동됩니다. 도를 누르면 해당 상세 지도로 넘어가며, 시·군은 모양대로 사진 채우기가 가능합니다.</p>
+</header>
+
+<div class="container">
+    <div class="map-container">
+        <div class="map-header">
+            <span id="map-level-title" style="font-weight: bold; color: #333; font-size: 16px;">전국 백지도</span>
+            <button id="btn-go-back" class="back-btn hidden">← 전국 지도로 돌아가기</button>
+        </div>
+        <div class="tooltip" id="tooltip">지역명</div>
+        
+        <div class="map-stage">
+            <img id="bg-image-layer" src="시, 군 백지도.png" class="bg-map-image" alt="지도 배경">
+            
+            <svg viewBox="0 0 550 650" xmlns="http://www.w3.org/2000/svg">
+                <defs id="svg-defs"></defs>
+                
+                <g id="layer-national">
+                    <path id="seoul" class="region" data-type="metro" data-name="서울특별시" d="M185,185 C180,190 180,200 190,205 C200,205 205,195 200,185 Z" />
+                    <path id="incheon" class="region" data-type="metro" data-name="인천광역시" d="M155,185 L168,185 L168,200 L155,205 Z" />
+                    <path id="sejong" class="region" data-type="metro" data-name="세종특별자치시" d="M205,280 L215,280 L215,295 L205,295 Z" />
+                    <path id="daejeon" class="region" data-type="metro" data-name="대전광역시" d="M215,310 L228,310 L228,330 L215,330 Z" />
+                    <path id="gwangju" class="region" data-type="metro" data-name="광주광역시" d="M190,465 C185,470 185,480 195,485 C205,485 210,475 205,465 Z" />
+                    <path id="daegu" class="region" data-type="metro" data-name="대구광역시" d="M315,400 C310,405 310,415 320,420 C330,420 335,410 330,400 Z" />
+                    <path id="ulsan" class="region" data-type="metro" data-name="울산광역시" d="M360,435 L375,435 L375,455 L360,455 Z" />
+                    <path id="busan" class="region" data-type="metro" data-name="부산광역시" d="M340,465 L360,460 L355,480 L335,475 Z" />
+                    
+                    <path id="경기" class="region" data-type="province" data-name="경기도" d="M165,150 L225,150 L230,205 L240,210 L240,240 L215,255 L170,240 L180,215 L170,210 Z" />
+                    <path id="강원도" class="region" data-type="province" data-name="강원도" d="M226,148 L310,125 L340,275 L290,295 L237,240 L227,208 Z" />
+                    <path id="충북" class="region" data-type="province" data-name="충청북도" d="M238,245 L290,297 L265,360 L240,340 L240,305 L212,258 Z" />
+                    <path id="충남" class="region" data-type="province" data-name="충청남도" d="M170,245 L208,258 L235,305 L225,350 L170,360 L155,310 Z" />
+                    <path id="전북" class="region" data-type="province" data-name="전라북도" d="M172,362 L240,345 L275,400 L250,440 L170,430 Z" />
+                    <path id="전남" class="region" data-type="province" data-name="전라남도" d="M170,432 L248,442 L245,480 L280,510 L230,540 L140,520 L150,460 Z" />
+                    <path id="경북" class="region" data-type="province" data-name="경상북도" d="M292,298 L350,278 L370,410 L335,430 L300,390 L267,360 Z" />
+                    <path id="경남" class="region" data-type="province" data-name="경상남도" d="M252,442 L298,392 L333,432 L338,460 L290,505 L247,482 Z" />
+                    <path id="제주" class="region" data-type="province" data-name="제주특별자치도" d="M135,575 C165,575 185,585 175,605 C155,625 115,615 105,595 C105,580 120,575 135,575 Z" />
+                </g>
+                
+                <g id="layer-detailed" class="hidden"></g>
+            </svg>
+        </div>
+    </div>
+
+    <div class="sidebar" id="editor-sidebar">
+        <div id="placeholder-text">
+            <h3>지역을 선택해주세요</h3>
+            <p>광역시나 세부 도시를 선택하시면 실제 행정구역 경계 모양에 맞춰 투명하게 사진이 결합되고, 전용 여행 일기장을 작성하실 수 있습니다.</p>
+        </div>
+        
+        <div id="editor-form" class="hidden">
+            <h2 id="selected-region-name">도시 이름</h2>
+            <div class="input-group">
+                <label>📷 이 도시 모양에 맞춰 사진 삽입</label>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+            <div class="input-group">
+                <label>📝 여행 기록 및 그림일기</label>
+                <textarea id="diary-text" placeholder="이 도시에서의 특별한 추억이나 코멘트를 남겨보세요."></textarea>
+            </div>
+            <button class="save-btn" id="save-btn">기록하기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 2단계 전환용: 실제 도별 백지도 파일에 대응하는 세부 시·군들의 경계 모양 좌표 데이터셋
+    const detailCitiesData = {
+        '경기': [
+            { id: 'gg-suwon', name: '수원시', d: 'M180,240 L260,240 L260,300 L180,300 Z' },
+            { id: 'gg-goyang', name: '고양시', d: 'M130,130 L220,130 L220,190 L130,190 Z' },
+            { id: 'gg-yongin', name: '용인시', d: 'M260,240 L340,240 L340,320 L260,320 Z' },
+            { id: 'gg-paju', name: '파주시', d: 'M100,50 L200,50 L180,130 L100,120 Z' }
+        ],
+        '강원도': [
+            { id: 'gw-chuncheon', name: '춘천시', d: 'M100,180 L220,180 L220,270 L100,270 Z' },
+            { id: 'gw-wonju', name: '원주시', d: 'M140,360 L240,360 L240,460 L140,460 Z' },
+            { id: 'gw-gangneung', name: '강릉시', d: 'M320,240 L420,240 L400,330 L310,330 Z' }
+        ],
+        '충북': [
+            { id: 'cb-cheongju', name: '청주시', d: 'M130,260 L240,260 L240,370 L130,370 Z' },
+            { id: 'cb-chungju', name: '충주시', d: 'M220,120 L330,120 L310,220 L210,220 Z' }
+        ],
+        '충남': [
+            { id: 'cn-cheonan', name: '천안시', d: 'M280,100 L380,100 L360,200 L260,200 Z' },
+            { id: 'cn-asan', name: '아산시', d: 'M180,130 L270,130 L250,200 L160,200 Z' }
+        ],
+        '전북': [
+            { id: 'jb-jeonju', name: '전주시', d: 'M220,200 L300,200 L290,280 L210,280 Z' },
+            { id: 'jb-gunsan', name: '군산시', d: 'M90,140 L190,140 L170,200 L80,200 Z' }
+        ],
+        '전남': [
+            { id: 'jn-mokpo', name: '목포시', d: 'M80,240 L150,240 L140,300 L70,300 Z' },
+            { id: 'jn-suncheon', name: '순천시', d: 'M290,210 L390,210 L370,300 M280,300 Z' }
+        ],
+        '경북': [
+            { id: 'gb-pohang', name: '포항시', d: 'M310,310 L410,310 L390,410 L290,410 Z' },
+            { id: 'gb-gyeongju', name: '경주시', d: 'M300,410 L400,410 L380,490 L290,490 Z' }
+        ],
+        '경남': [
+            { id: 'gn-changwon', name: '창원시', d: 'M270,260 L350,260 L340,340 L260,340 Z' },
+            { id: 'gn-jinju', name: '진주시', d: 'M160,270 L250,270 L240,340 L150,340 Z' }
+        ],
+        '제주': [
+            { id: 'jj-jejusi', name: '제주시', d: 'M120,120 L360,120 L340,250 L110,250 Z' },
+            { id: 'jj-seogwipo', name: '서귀포시', d: 'M120,250 L340,250 L310,390 L110,390 Z' }
+        ]
+    };
+
+    const travelData = {};
+    const tooltip = document.getElementById('tooltip');
+    const layerNational = document.getElementById('layer-national');
+    const layerDetailed = document.getElementById('layer-detailed');
+    const bgImageLayer = document.getElementById('bg-image-layer');
+    const btnGoBack = document.getElementById('btn-go-back');
+    const mapLevelTitle = document.getElementById('map-level-title');
+    const svgDefs = document.getElementById('svg-defs');
+
+    const sidebarPlaceholder = document.getElementById('placeholder-text');
+    const sidebarForm = document.getElementById('editor-form');
+    const selectedRegionName = document.getElementById('selected-region-name');
+    const diaryText = document.getElementById('diary-text');
+    const imageUpload = document.getElementById('image-upload');
+    const saveBtn = document.getElementById('save-btn');
+
+    let currentSelectedId = null;
+
+    // 인터랙션 통합 바인딩 함수
+    function attachMapEvents(element) {
+        element.addEventListener('mousemove', (e) => {
+            tooltip.style.display = 'block';
+            tooltip.innerText = element.getAttribute('data-name');
+            const rect = e.currentTarget.closest('.map-container').getBoundingClientRect();
+            tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+            tooltip.style.top = (e.clientY - rect.top + 15) + 'px';
+        });
+
+        element.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+        element.addEventListener('click', () => {
+            const type = element.getAttribute('data-type');
+            
+            if (type === 'province') {
+                // [도] 구역 클릭 시 -> 이미지 변경 및 상세 시·군 레이어 로드
+                const targetProvince = element.id;
+                switchToDetailedView(targetProvince, element.getAttribute('data-name'));
+            } else {
+                // 광역시 및 세부 시·군 클릭 시 -> 다이어리 활성화
+                document.querySelectorAll('.region').forEach(r => r.classList.remove('active'));
+                element.classList.add('active');
+                openEditor(element.id, element.getAttribute('data-name'));
+            }
+        });
+    }
+
+    // 초기 전국 지도 이벤트 연결
+    document.querySelectorAll('.region').forEach(attachMapEvents);
+
+    // 2단계 전환 엔진 (해당 도의 이미지와 도시 매핑)
+    function switchToDetailedView(provId, provName) {
+        layerNational.classList.add('hidden');
+        layerDetailed.classList.remove('hidden');
+        btnGoBack.classList.remove('hidden');
+        
+        // 이미지 소스를 클릭한 도의 이미지 명칭(예: 경기.jpg, 강원도.jpg)으로 전격 변경!
+        bgImageLayer.src = `${provId}.jpg`;
+        mapLevelTitle.innerText = `${provName} 상세 백지도`;
+        
+        layerDetailed.innerHTML = ''; // 기존 도시 노출 분량 리셋
+        closeEditor();
+
+        const cities = detailCitiesData[provId] || [];
+        cities.forEach(city => {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('id', city.id);
+            path.setAttribute('class', 'region');
+            path.setAttribute('d', city.d);
+            path.setAttribute('data-type', 'city');
+            path.setAttribute('data-name', city.name);
+            
+            // 만약 이미 사진을 저장해둔 도시라면 사진을 그대로 유지
+            if (travelData[city.id] && travelData[city.id].image) {
+                path.style.fill = `url(#pattern-${city.id})`;
+            }
+            
+            layerDetailed.appendChild(path);
+            attachMapEvents(path);
+        });
+    }
+
+    // 전국 지도로 복원
+    btnGoBack.addEventListener('click', () => {
+        layerDetailed.classList.add('hidden');
+        layerNational.classList.remove('hidden');
+        btnGoBack.classList.add('hidden');
+        
+        // 원본 메인 전국 백지도 이미지 파일로 복원
+        bgImageLayer.src = "시, 군 백지도.png";
+        mapLevelTitle.innerText = "전국 백지도";
+        closeEditor();
+    });
+
+    // 편집창 상태 제어
+    function openEditor(id, name) {
+        currentSelectedId = id;
+        sidebarPlaceholder.classList.add('hidden');
+        sidebarForm.classList.remove('hidden');
+        selectedRegionName.innerText = name;
+
+        if (travelData[id]) {
+            diaryText.value = travelData[id].diary || '';
+        } else {
+            diaryText.value = '';
+        }
+        imageUpload.value = '';
+    }
+
+    function closeEditor() {
+        sidebarForm.classList.add('hidden');
+        sidebarPlaceholder.classList.remove('hidden');
+        document.querySelectorAll('.region').forEach(r => r.classList.remove('active'));
+    }
+
+    // 저장 및 사진 마스킹 결합
+    saveBtn.addEventListener('click', () => {
+        if (!currentSelectedId) return;
+
+        if (!travelData[currentSelectedId]) travelData[currentSelectedId] = {};
+        travelData[currentSelectedId].diary = diaryText.value;
+
+        const file = imageUpload.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageUrl = e.target.result;
+                travelData[currentSelectedId].image = imageUrl;
+                applyClippingMask(currentSelectedId, imageUrl);
+            }
+            reader.readAsDataURL(file);
+        }
+        alert(`${selectedRegionName.innerText}에 소중한 추억 기록이 완료되었습니다.`);
+    });
+
+    // 행정구역 경계 패스선 모양에 맞춰 정확히 이미지를 잘라 채우는 SVG 마스킹 기법
+    function applyClippingMask(id, imageUrl) {
+        const element = document.getElementById(id);
+        const bbox = element.getBBox();
+        
+        let pattern = document.getElementById(`pattern-${id}`);
+        if (!pattern) {
+            pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
+            pattern.setAttribute('id', `pattern-${id}`);
+            pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+            pattern.setAttribute('x', bbox.x);
+            pattern.setAttribute('y', bbox.y);
+            pattern.setAttribute('width', bbox.width);
+            pattern.setAttribute('height', bbox.height);
+
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('href', imageUrl);
+            img.setAttribute('width', bbox.width);
+            img.setAttribute('height', bbox.height);
+            img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+
+            pattern.appendChild(img);
+            svgDefs.appendChild(pattern);
+        } else {
+            pattern.querySelector('image').setAttribute('href', imageUrl);
+        }
+        // 투명했던 패스 내부에 유저 사진을 채워넣음 (경계선에 맞춰 자동 잘림)
+        element.style.fill = `url(#pattern-${id})`;
+    }
+</script>
+</body>
+</html>
